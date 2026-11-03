@@ -10,6 +10,7 @@ export class ChessRealtimeObserver {
         this.ChessApp = ChessApp;
         this.adapter = null;
         this.identity = null;
+        this.servant = null;
         this.onStateChangedCallback = null;
         this.onGameFinishedCallback = null;
     }
@@ -19,35 +20,82 @@ export class ChessRealtimeObserver {
      * sobre la conexión WebSocket activa y registra el observador en la sala.
      */
     async subscribe(communicator, servicePrx, roomCode, nickname, { onStateChanged, onGameFinished } = {}) {
-        // TODO (Paso 3.1): Limpiar cualquier adaptador previo invocando await this.cleanupAdapter()
-        // y almacenar los callbacks onStateChanged y onGameFinished.
+        await this.cleanupAdapter();
+        this.onStateChangedCallback = typeof onStateChanged === "function" ? onStateChanged : null;
+        this.onGameFinishedCallback = typeof onGameFinished === "function" ? onGameFinished : null;
 
-        // TODO (Paso 3.2): Definir una clase servant (ej. WebChessObserverServant) que extienda
-        // this.ChessApp.ChessObserver e implemente:
-        //   - onGameStateChanged(newState, _current)
-        //   - onGameFinished(finalState, winnerNickname, pointsDelta, _current)
+        const ObserverBase = this.ChessApp.ChessObserver;
+        const onStateChangedCallback = this.onStateChangedCallback;
+        const onGameFinishedCallback = this.onGameFinishedCallback;
 
-        // TODO (Paso 3.3): Crear un ObjectAdapter sin endpoints con communicator.createObjectAdapter(""),
-        // generar una identidad única con new this.Ice.Identity(this.Ice.generateUUID(), "ChessObserver"),
-        // registrar la instancia del servant con this.adapter.add(...) y activar el adaptador.
+        class WebChessObserverServant extends ObserverBase {
+            onGameStateChanged(newState, _current) {
+                if (onStateChangedCallback) {
+                    onStateChangedCallback(newState);
+                }
+            }
 
-        // TODO (Paso 3.4): Obtener la conexión WebSocket activa con await servicePrx.ice_getConnection(),
-        // asociarle el adaptador con connection.setAdapter(this.adapter), crear el proxy del observador
-        // con this.ChessApp.ChessObserverPrx.uncheckedCast(...) e invocar:
-        // await servicePrx.registerObserver(roomCode, nickname, observerPrx);
+            onGameFinished(finalState, winnerNickname, pointsDelta, _current) {
+                if (onGameFinishedCallback) {
+                    onGameFinishedCallback(finalState, winnerNickname, pointsDelta);
+                }
+            }
+        }
+
+        this.servant = new WebChessObserverServant();
+
+        try {
+            this.adapter = await communicator.createObjectAdapter("");
+            this.identity = new this.Ice.Identity(this.Ice.generateUUID(), "ChessObserver");
+            const observerProxy = this.adapter.add(this.servant, this.identity);
+            await this.adapter.activate();
+
+            const connection = await servicePrx.ice_getConnection();
+            connection.setAdapter(this.adapter);
+
+            const observerPrx = this.ChessApp.ChessObserverPrx.uncheckedCast(observerProxy);
+            await servicePrx.registerObserver(roomCode, nickname, observerPrx);
+        } catch (error) {
+            this.onStateChangedCallback = null;
+            this.onGameFinishedCallback = null;
+            await this.cleanupAdapter();
+            throw error;
+        }
     }
 
     /**
      * Desvincula el observador de la sala en el servidor y limpia el adaptador local.
      */
     async unsubscribe(servicePrx, roomCode, nickname) {
-        // TODO (Paso 3.5): Limpiar los callbacks locales, invocar
-        // await servicePrx.unregisterObserver(roomCode, nickname) (manejando posibles excepciones)
-        // y llamar a await this.cleanupAdapter().
+        this.onStateChangedCallback = null;
+        this.onGameFinishedCallback = null;
+
+        try {
+            await servicePrx.unregisterObserver(roomCode, nickname);
+        } finally {
+            await this.cleanupAdapter();
+        }
     }
 
     async cleanupAdapter() {
-        // TODO (Paso 3.6): Si this.adapter existe, remover this.identity y destruir el adaptador
-        // (await this.adapter.destroy()), dejando this.adapter = null y this.identity = null.
+        if (!this.adapter) {
+            this.identity = null;
+            this.servant = null;
+            return;
+        }
+
+        const adapter = this.adapter;
+        const identity = this.identity;
+        this.adapter = null;
+        this.identity = null;
+        this.servant = null;
+
+        try {
+            if (identity) {
+                adapter.remove(identity);
+            }
+        } finally {
+            await adapter.destroy();
+        }
     }
 }

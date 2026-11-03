@@ -131,7 +131,7 @@ module ChessApp {
 
         string createRoom(string creatorNickname);
         JoinRoomResult joinRoom(string roomCode, string nickname) throws RoomNotFoundException, ChessException;
-        void registerObserver(string roomCode, string nickname, ChessObserver* observer);
+        void registerObserver(string roomCode, string nickname, ChessObserver* observer) throws RoomNotFoundException;
         void unregisterObserver(string roomCode, string nickname);
 
         GameState getGameState(string roomCode) throws RoomNotFoundException;

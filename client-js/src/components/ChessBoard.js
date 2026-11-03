@@ -80,7 +80,63 @@ export class ChessBoard {
      *        - Insertar el indicador dentro de la casilla.
      */
     render(gameState, selectedSquare, legalMoves = []) {
-        // TODO: Implementar el renderizado del tablero según la especificación de requerimientos de arriba.
+        if (!gameState || !gameState.board) {
+            return;
+        }
+
+        const moves = gameState.moves || [];
+        const lastMove = moves.length > 0 ? moves[moves.length - 1] : null;
+
+        for (let r = 0; r < 8; r++) {
+            for (let c = 0; c < 8; c++) {
+                const tile = this.tiles[r][c];
+                const isLight = (r + c) % 2 === 0;
+                const piece = gameState.board[r] ? gameState.board[r][c] : null;
+                const hasPiece = piece && piece.type && piece.type._name !== "PIECEEMPTY";
+
+                tile.className = `tile ${isLight ? "light" : "dark"}`;
+                tile.replaceChildren();
+
+                if (
+                    lastMove &&
+                    (
+                        (lastMove.fromPos.row === r && lastMove.fromPos.col === c) ||
+                        (lastMove.toPos.row === r && lastMove.toPos.col === c)
+                    )
+                ) {
+                    tile.classList.add("last-move");
+                }
+
+                if (
+                    selectedSquare &&
+                    selectedSquare.row === r &&
+                    selectedSquare.col === c
+                ) {
+                    tile.classList.add("selected");
+                }
+
+                if (hasPiece) {
+                    const pieceElement = document.createElement("span");
+                    if (piece.color && piece.color._name === "COLORWHITE") {
+                        pieceElement.className = "piece-white";
+                    } else {
+                        pieceElement.className = "piece-black";
+                    }
+                    pieceElement.textContent = getPieceGlyph(piece);
+                    tile.appendChild(pieceElement);
+                }
+
+                const isLegalMove = legalMoves.some(
+                    (move) => move.row === r && move.col === c
+                );
+
+                if (isLegalMove) {
+                    const indicator = document.createElement("div");
+                    indicator.className = hasPiece ? "capture-ring" : "move-dot";
+                    tile.appendChild(indicator);
+                }
+            }
+        }
     }
 
     getElement() {
